@@ -1,0 +1,140 @@
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#define SHA256_BASE 0x11000u
+#define SHA256_REG(offset) (*(volatile uint32_t *)(SHA256_BASE + ((offset) << 2)))
+
+enum {
+    SHA256_REG_BLOCK0 = 0,
+    SHA256_REG_CTRL   = 16,
+    SHA256_REG_DIGEST0 = 17
+};
+
+#define SHA256_CTRL_INIT       (1u << 0)
+#define SHA256_CTRL_NEXT       (1u << 1)
+#define SHA256_STATUS_DONE     (1u << 0)
+#define SHA256_STATUS_READY    (1u << 1)
+#define SHA256_STATUS_VALID    (1u << 2)
+
+static inline uint32_t be_word(const uint8_t bytes[4])
+{
+    return ((uint32_t)bytes[0] << 24) |
+           ((uint32_t)bytes[1] << 16) |
+           ((uint32_t)bytes[2] << 8) |
+           ((uint32_t)bytes[3]);
+}
+
+static inline void sha256_write_block(const uint8_t block[64])
+{
+    int i;
+    for (i = 0; i < 16; i++) {
+        SHA256_REG(SHA256_REG_BLOCK0 + i) = be_word(&block[i * 4]);
+    }
+}
+
+static inline void sha256_start_init(void)
+{
+    SHA256_REG(SHA256_REG_CTRL) = SHA256_CTRL_INIT;
+}
+
+static inline void sha256_poll_done(void)
+{
+    while ((SHA256_REG(SHA256_REG_CTRL) & SHA256_STATUS_DONE) == 0u) {
+        ;
+    }
+}
+
+static inline void sha256_read_digest(uint8_t digest[32])
+{
+    int i;
+    for (i = 0; i < 8; i++) {
+        uint32_t w = SHA256_REG(SHA256_REG_DIGEST0 + i);
+        digest[i * 4 + 0] = (uint8_t)(w >> 24);
+        digest[i * 4 + 1] = (uint8_t)(w >> 16);
+        digest[i * 4 + 2] = (uint8_t)(w >> 8);
+        digest[i * 4 + 3] = (uint8_t)(w >> 0);
+    }
+}
+
+void sha256_compute_single_block(const uint8_t block[64], uint8_t digest[32])
+{
+    sha256_write_block(block);
+    sha256_start_init();
+    sha256_poll_done();
+    sha256_read_digest(digest);
+}
+
+static void store_be32(uint8_t *dst, uint32_t value)
+{
+    dst[0] = (uint8_t)(value >> 24);
+    dst[1] = (uint8_t)(value >> 16);
+    dst[2] = (uint8_t)(value >> 8);
+    dst[3] = (uint8_t)value;
+}
+
+static int pad_sha256_single_block(const uint8_t *msg, uint32_t len, uint8_t block[64])
+{
+    if (len > 55u) {
+        return -1;
+    }
+
+    memset(block, 0, 64);
+    memcpy(block, msg, len);
+    block[len] = 0x80;
+
+    uint64_t bitlen = (uint64_t)len << 3;
+    store_be32(&block[56], (uint32_t)(bitlen >> 32));
+    store_be32(&block[60], (uint32_t)(bitlen & 0xffffffffu));
+    return 0;
+}
+
+static void print_hash(const uint8_t digest[32])
+{
+    int i;
+    for (i = 0; i < 32; i++) {
+        printf("%02x", digest[i]);
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    const char *filename = (argc > 1) ? argv[1] : "testcases.txt";
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+        printf("Cannot open test file: %s\n", filename);
+        return 1;
+    }
+
+    char line[256];
+    uint8_t block[64];
+    uint8_t digest[32];
+    int test_idx = 0;
+
+    while (fgets(line, sizeof(line), f)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+            line[--len] = '\0';
+        }
+
+        if (len == 0) {
+            continue;
+        }
+
+        test_idx++;
+        printf("Test %d: %s\n", test_idx, line);
+
+        if (pad_sha256_single_block((const uint8_t *)line, (uint32_t)len, block) != 0) {
+            printf("Result%d: message too long for single-block demo\n", test_idx);
+            continue;
+        }
+
+        sha256_compute_single_block(block, digest);
+        printf("Result%d: ", test_idx);
+        print_hash(digest);
+        printf("\n");
+    }
+
+    fclose(f);
+    return 0;
+}

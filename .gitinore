@@ -1,0 +1,30 @@
+# Quartus generated files and folders
+db/
+incremental_db/
+output_files/
+simulation/
+greybox_tmp/
+*.rpt
+*.smsg
+*.summary
+*.done
+*.jdi
+*.pin
+*.qws
+*.bak
+*.qdf
+*.bsf
+*.dpf
+*.eqn
+
+# Nios II / Eclipse generated files
+software/*/obj/
+software/*/*.elf
+software/*/*.map
+software/*/*.objdump
+.metadata/
+
+# Bỏ qua các file nén nếu có
+*.zip
+*.rar
+*.tar.gz

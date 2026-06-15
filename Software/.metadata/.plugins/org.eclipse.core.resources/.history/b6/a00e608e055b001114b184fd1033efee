@@ -1,0 +1,94 @@
+#include <stdint.h>
+
+#define SHA256_BASE 0x11000u
+#define SHA256_REG(offset) (*(volatile uint32_t *)(SHA256_BASE + ((offset) << 2)))
+
+enum {
+    SHA256_REG_BLOCK0 = 0,
+    SHA256_REG_CTRL   = 16,
+    SHA256_REG_DIGEST0 = 17
+};
+
+#define SHA256_CTRL_INIT       (1u << 0)
+#define SHA256_CTRL_NEXT       (1u << 1)
+#define SHA256_STATUS_DONE     (1u << 0)
+#define SHA256_STATUS_READY    (1u << 1)
+#define SHA256_STATUS_VALID    (1u << 2)
+
+static inline uint32_t be_word(const uint8_t bytes[4])
+{
+    return ((uint32_t)bytes[0] << 24) |
+           ((uint32_t)bytes[1] << 16) |
+           ((uint32_t)bytes[2] << 8) |
+           ((uint32_t)bytes[3]);
+}
+
+static inline void sha256_write_block(const uint8_t block[64])
+{
+    int i;
+    for (i = 0; i < 16; i++) {
+        SHA256_REG(SHA256_REG_BLOCK0 + i) = be_word(&block[i * 4]);
+    }
+}
+
+static inline void sha256_start_init(void)
+{
+    SHA256_REG(SHA256_REG_CTRL) = SHA256_CTRL_INIT;
+}
+
+static inline void sha256_start_next(void)
+{
+    SHA256_REG(SHA256_REG_CTRL) = SHA256_CTRL_NEXT;
+}
+
+static inline void sha256_poll_done(void)
+{
+    while ((SHA256_REG(SHA256_REG_CTRL) & SHA256_STATUS_DONE) == 0u) {
+        ;
+    }
+}
+
+static inline void sha256_read_digest(uint8_t digest[32])
+{
+    int i;
+    for (i = 0; i < 8; i++) {
+        uint32_t w = SHA256_REG(SHA256_REG_DIGEST0 + i);
+        digest[i * 4 + 0] = (uint8_t)(w >> 24);
+        digest[i * 4 + 1] = (uint8_t)(w >> 16);
+        digest[i * 4 + 2] = (uint8_t)(w >> 8);
+        digest[i * 4 + 3] = (uint8_t)(w >> 0);
+    }
+}
+
+void sha256_compute_single_block(const uint8_t block[64], uint8_t digest[32])
+{
+    sha256_write_block(block);
+    sha256_start_init();
+    sha256_poll_done();
+    sha256_read_digest(digest);
+}
+
+#ifdef TEST_SHA256_AVALON
+#include <stdio.h>
+
+int main(void)
+{
+    uint8_t block[64] = {0x61, 0x62, 0x63, 0x80};
+    uint8_t digest[32];
+    int i;
+
+    block[60] = 0x00;
+    block[61] = 0x00;
+    block[62] = 0x00;
+    block[63] = 0x18;
+
+    sha256_compute_single_block(block, digest);
+
+    for (i = 0; i < 32; i++) {
+        printf("%02x", digest[i]);
+    }
+    printf("\n");
+
+    return 0;
+}
+#endif
