@@ -59,4 +59,4 @@ The functional integrity and accuracy of the SoC system were verified through re
 2. **Boundary Single-Block Vector:** Evaluating a 55-byte message containing repeating `'a'` characters to stress-test the edge case of message padding fitting inside a solitary 512-bit block.
 ![Qsys System Interconnect Architecture](Doc/Demo_55_bytes_a(Boundary_Single-Block).png)
 3. **Multi-Block Vector (Extended Input):** Executing a 65-byte message of repeating `'a'` characters to force the software and hardware pipeline to handle multi-block loop scheduling, verifying correct hash chaining variables across subsequent blocks.
-![Qsys System Interconnect Architecture](Doc/Demo_65_bytes_ a(Multi-Block).png)
+![Qsys System Interconnect Architecture](Doc/Demo_65_bytes_a(Multi-Block).png.png)
